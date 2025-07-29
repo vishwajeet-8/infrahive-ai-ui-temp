@@ -14,7 +14,7 @@ const Extractions = () => {
     const fetchExtractedData = async () => {
       try {
         const res = await api.get(`/extracted-data-workspace/${workspaceId}`);
-        console.log(res.data);
+
         setDocuments(res.data);
       } catch (err) {
         console.error("Failed to load extracted documents", err);

@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { useParams } from "react-router-dom";
 import api from "@/utils/api";
+import axios from "axios";
 
 // Variable Highlighting Extension
 const VariableHighlight = Extension.create({
@@ -246,9 +247,7 @@ const TiptapEditor = () => {
           s3_key_original: item.s3_key_original,
         }));
       setAvailableDocuments(docs);
-      console.log("Loaded documents:", docs);
     } catch (error) {
-      console.error("Error loading documents:", error);
       setAvailableDocuments([]);
     }
   };
@@ -259,7 +258,6 @@ const TiptapEditor = () => {
 
   const handleVariableClick = useCallback(
     (variableId) => {
-      console.log("Variable clicked:", variableId);
       if (!showVariablesPanel) {
         setShowVariablesPanel(true);
       }
@@ -349,13 +347,7 @@ const TiptapEditor = () => {
         updateEditorState();
         const currentHtml = editor.getHTML();
         const charCount = currentHtml.length;
-        console.log(
-          "Editor updated, current content:",
-          currentHtml.substring(0, 500),
-          "...",
-          "Character count:",
-          charCount
-        );
+
         setEditorContent(currentHtml);
         if (isLoading && currentHtml !== "<p></p>") {
           setIsLoading(false);
@@ -366,7 +358,6 @@ const TiptapEditor = () => {
       },
       onCreate: ({ editor }) => {
         editorRef.current = editor;
-        console.log("Editor created, initial content:", editor.getHTML());
       },
     },
     [currentVariables, handleVariableClick]
@@ -425,13 +416,7 @@ const TiptapEditor = () => {
     }
     setIsLoading(true);
     const charCount = htmlContent.length;
-    console.log(
-      "Updating content with HTML:",
-      htmlContent.substring(0, 500),
-      "...",
-      "Total length:",
-      charCount
-    );
+
     try {
       setEditorContent(htmlContent);
       setTimeout(() => {
@@ -443,13 +428,7 @@ const TiptapEditor = () => {
         setContentUpdateTrigger((prev) => prev + 1);
         updateEditorState();
         const currentHtml = editor.getHTML();
-        console.log(
-          "Updated content HTML:",
-          currentHtml.substring(0, 500),
-          "...",
-          "Length:",
-          currentHtml.length
-        );
+
         if (currentHtml !== htmlContent) {
           console.warn(
             "Partial content loaded, forcing re-init. Expected length:",
@@ -513,11 +492,9 @@ const TiptapEditor = () => {
 
   const preprocessHtmlContent = (html, variables) => {
     let processedHtml = html;
-    console.log("Raw HTML before preprocessing:", html.substring(0, 500));
     const foundPlaceholders = new Set(
       (html.match(/\{\{[^}]+\}\}/g) || []).map((p) => p.slice(2, -2).trim())
     );
-    console.log("Found placeholders:", Array.from(foundPlaceholders));
     const variableIds = new Set(variables.map((v) => v.unique_id));
     const status = {};
     variables.forEach((v) => {
@@ -525,7 +502,6 @@ const TiptapEditor = () => {
         ? "Found"
         : "Missing";
     });
-    console.log("Placeholder status:", status);
     setPlaceholderStatus(status);
     variables.forEach((variable) => {
       const placeholder = `{{${variable.unique_id}}}`;
@@ -548,10 +524,6 @@ const TiptapEditor = () => {
         unmatchedVariables.map((v) => v.unique_id)
       );
     }
-    console.log(
-      "Processed HTML after preprocessing:",
-      processedHtml.substring(0, 500)
-    );
     return processedHtml;
   };
 
@@ -613,9 +585,6 @@ const TiptapEditor = () => {
       if (matchCount > 0) {
         replacementsMade += matchCount;
         updatedContent = updatedContent.replace(regex, replacement);
-        console.log(
-          `Applied variable ${variableId} with value "${sanitizedValue}", matches: ${matchCount}`
-        );
       } else {
         console.warn(
           `No matches found for variable ${variableId} in content. Placeholder status:`,
@@ -629,9 +598,7 @@ const TiptapEditor = () => {
         .chain()
         .setContent(updatedContent, false, { preserveWhitespace: true })
         .run();
-      console.log(
-        `Applied ${replacementsMade} variable replacements in editor content`
-      );
+
       if (replacementsMade > 0) {
         alert(
           `Applied ${replacementsMade} variable${
@@ -665,7 +632,7 @@ const TiptapEditor = () => {
         const token = localStorage.getItem("token");
         if (source === "server") {
           const doc = fileOrDoc;
-          console.log("Starting server document import:", doc.filename);
+
           // Fetch signed URL for the document
           const response = await api.get(
             `/get-signed-url?key=${encodeURIComponent(doc.s3_key_original)}`,
@@ -676,7 +643,6 @@ const TiptapEditor = () => {
             }
           );
           const signedUrl = response.data.url;
-          console.log("Received signed URL:", signedUrl);
 
           // Fetch the document using the signed URL
           const fileResponse = await fetch(signedUrl);
@@ -693,7 +659,6 @@ const TiptapEditor = () => {
         } else if (source === "local") {
           file = fileOrDoc;
           fileName = file.name;
-          console.log("Starting local document import:", fileName);
         } else {
           throw new Error("Invalid import source");
         }
@@ -703,53 +668,35 @@ const TiptapEditor = () => {
         const mammoth = await import("mammoth");
         const mammothResult = await mammoth.convertToHtml({ arrayBuffer });
         let htmlContent = mammothResult.value;
-        console.log(
-          "Mammoth conversion complete, HTML length:",
-          htmlContent.length
-        );
 
         // Send file to template-convert API
         const formData = new FormData();
         formData.append("file", file, fileName);
-        console.log("Calling convert-template API...");
-        const apiResponse = await api.post(
-          "http://20.51.215.177:8000/template-convert",
+
+        const apiResponse = await axios.post(
+          `${import.meta.env.VITE_PY_LEGAL_API}/template-convert`,
           formData
         );
         if (!apiResponse.data) {
           throw new Error("API request failed: No data returned");
         }
         const apiData = apiResponse.data;
-        console.log("API response received:", {
-          hasFile: !!apiData.file,
-          hasMapping: !!apiData.mapping,
-          usage: apiData.usage,
-        });
 
         // Process returned file if available
         if (apiData.file) {
           try {
-            console.log("Processing base64 file response...");
             const processedDocxBlob = base64ToBlob(
               apiData.file,
               "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             );
-            console.log(
-              "Created blob from base64, size:",
-              processedDocxBlob.size
-            );
+
             const processedArrayBuffer = await processedDocxBlob.arrayBuffer();
             const processedResult = await mammoth.convertToHtml({
               arrayBuffer: processedArrayBuffer,
             });
             htmlContent = processedResult.value;
-            console.log(
-              "Processed DOCX converted to HTML, length:",
-              htmlContent.length
-            );
           } catch (fileError) {
             console.error("Error processing base64 file:", fileError);
-            console.log("Falling back to original mammoth conversion");
           }
         }
 
@@ -760,7 +707,6 @@ const TiptapEditor = () => {
             console.warn("No mapping field in API response");
             variables = [];
           } else {
-            console.log("Raw mapping field:", apiData.mapping);
             if (typeof apiData.mapping === "string") {
               variables = JSON.parse(apiData.mapping);
             } else if (Array.isArray(apiData.mapping)) {
@@ -777,11 +723,10 @@ const TiptapEditor = () => {
               label: v.label || `Variable ${index + 1}`,
               type: v.type || "text",
             }));
-            console.log("Parsed variables:", variables);
           }
         } catch (mappingError) {
           console.error("Error parsing mapping:", mappingError.message);
-          console.log("Raw mapping data:", apiData.mapping);
+
           alert(
             "Failed to parse variable mapping from API. Variables may not be available."
           );
@@ -809,7 +754,7 @@ const TiptapEditor = () => {
 
         // Check for missing placeholders
         const placeholderMatches = htmlContent.match(/\{\{[^}]+\}\}/g) || [];
-        console.log("Placeholders found in HTML:", placeholderMatches);
+
         const missingPlaceholders = variables.filter(
           (v) => !placeholderMatches.some((p) => p.includes(v.unique_id))
         );
@@ -875,13 +820,11 @@ const TiptapEditor = () => {
     }
   };
 
-  const handleSummarizeText = useCallback((originalText, summarizedText) => {
-    console.log("Text summarized:", { originalText, summarizedText });
-  }, []);
+  const handleSummarizeText = useCallback((originalText, summarizedText) => {},
+  []);
 
-  const handleImproveWriting = useCallback((originalText, improvedText) => {
-    console.log("Writing improved:", { originalText, improvedText });
-  }, []);
+  const handleImproveWriting = useCallback((originalText, improvedText) => {},
+  []);
 
   const handleSave = useCallback(() => {
     if (!editor) return;
@@ -971,12 +914,7 @@ const TiptapEditor = () => {
         const { $from } = selection;
         const currentNode = $from.parent;
         const currentNodeType = currentNode.type.name;
-        console.log(
-          "Tab pressed in node type:",
-          currentNodeType,
-          "at position:",
-          $from.pos
-        );
+
         const exitableBlocks = [
           "blockquote",
           "codeBlock",
@@ -991,11 +929,9 @@ const TiptapEditor = () => {
             if (currentNodeType === "listItem") {
               const canLift = editor.can().liftListItem("listItem");
               if (canLift) {
-                console.log("Lifting list item");
                 editor.chain().focus().liftListItem("listItem").run();
                 return;
               } else {
-                console.log("Cannot lift, trying to exit list");
                 const pos = $from.end($from.depth - 1);
                 editor
                   .chain()
@@ -1013,7 +949,6 @@ const TiptapEditor = () => {
             ) {
               const isEmpty = currentNode.textContent.trim() === "";
               if (isEmpty) {
-                console.log("Exiting empty list");
                 const pos = $from.after($from.depth);
                 editor
                   .chain()
@@ -1028,7 +963,6 @@ const TiptapEditor = () => {
             if (
               ["blockquote", "codeBlock", "heading"].includes(currentNodeType)
             ) {
-              console.log("Exiting block:", currentNodeType);
               let pos = $from.after($from.depth);
               if (pos > doc.content.size) {
                 pos = doc.content.size;
@@ -1040,13 +974,9 @@ const TiptapEditor = () => {
                 .insertContent("<p></p>")
                 .setTextSelection(pos + 1)
                 .run();
-              console.log(
-                "Successfully created new paragraph at position:",
-                pos + 1
-              );
+
               return;
             }
-            console.log("No specific handler for node type:", currentNodeType);
           } catch (error) {
             console.error("Error handling tab exit:", error);
             try {
@@ -1057,7 +987,6 @@ const TiptapEditor = () => {
                 .setTextSelection(currentPos)
                 .insertContent("<p><br></p>")
                 .run();
-              console.log("Used fallback paragraph insertion");
             } catch (fallbackError) {
               console.error("Fallback also failed:", fallbackError);
             }
@@ -1118,7 +1047,6 @@ const TiptapEditor = () => {
         setSlashQuery("");
         setSlashRange({ from: from - 1, to });
         setSlashMenuPosition({ x, y });
-        console.log("Slash menu triggered at position:", { x, y, from });
       }
       if (showSlashMenu) {
         if (e.key === "Escape") {
@@ -1267,10 +1195,6 @@ const TiptapEditor = () => {
       if (pluginState.active && showSlashMenu) {
         setSlashQuery(pluginState.query);
         setSlashRange(pluginState.range);
-        console.log("SlashCommands state updated:", {
-          query: pluginState.query,
-          range: pluginState.range,
-        });
       } else if (!pluginState.active && showSlashMenu) {
         setShowSlashMenu(false);
         setSlashQuery("");
@@ -1464,7 +1388,6 @@ const TiptapEditor = () => {
                         setShowSlashMenu(false);
                         setSlashQuery("");
                         setSlashRange(null);
-                        console.log("SlashCommandMenu onSelect called");
                       }}
                     />
                   ) : (
@@ -1480,7 +1403,6 @@ const TiptapEditor = () => {
                             key: "h1",
                             description: "Large section heading",
                             command: () => {
-                              console.log("Executing Heading 1 command");
                               editor
                                 .chain()
                                 .focus()
@@ -1494,7 +1416,6 @@ const TiptapEditor = () => {
                             key: "h2",
                             description: "Medium section heading",
                             command: () => {
-                              console.log("Executing Heading 2 command");
                               editor
                                 .chain()
                                 .focus()
@@ -1508,7 +1429,6 @@ const TiptapEditor = () => {
                             key: "h3",
                             description: "Small section heading",
                             command: () => {
-                              console.log("Executing Heading 3 command");
                               editor
                                 .chain()
                                 .focus()
@@ -1522,7 +1442,6 @@ const TiptapEditor = () => {
                             key: "bullet",
                             description: "Create a bullet list",
                             command: () => {
-                              console.log("Executing Bullet List command");
                               editor
                                 .chain()
                                 .focus()
@@ -1536,7 +1455,6 @@ const TiptapEditor = () => {
                             key: "numbered",
                             description: "Create a numbered list",
                             command: () => {
-                              console.log("Executing Numbered List command");
                               editor
                                 .chain()
                                 .focus()
@@ -1550,7 +1468,6 @@ const TiptapEditor = () => {
                             key: "quote",
                             description: "Create a blockquote",
                             command: () => {
-                              console.log("Executing Quote command");
                               editor
                                 .chain()
                                 .focus()
@@ -1564,7 +1481,6 @@ const TiptapEditor = () => {
                             key: "code",
                             description: "Create a code block",
                             command: () => {
-                              console.log("Executing Code Block command");
                               editor
                                 .chain()
                                 .focus()
@@ -1578,7 +1494,6 @@ const TiptapEditor = () => {
                             key: "hr",
                             description: "Add a horizontal divider",
                             command: () => {
-                              console.log("Executing Horizontal Rule command");
                               editor
                                 .chain()
                                 .focus()
@@ -1604,7 +1519,6 @@ const TiptapEditor = () => {
                               key={index}
                               onClick={() => {
                                 try {
-                                  console.log("Command clicked:", item.label);
                                   item.command();
                                   setShowSlashMenu(false);
                                   setSlashQuery("");
@@ -1955,9 +1869,6 @@ const TiptapEditor = () => {
                               ...prev,
                               [variable.unique_id]: "Found",
                             }));
-                            console.log(
-                              `Inserted placeholder for ${variable.unique_id}`
-                            );
                           }
                         }}
                         className="mt-2 w-full px-2 py-1 text-xs text-blue-600 hover:text-blue-800 border border-blue-300 hover:border-blue-500 rounded-md flex items-center justify-center space-x-1"
